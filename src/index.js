@@ -88,6 +88,7 @@ function protectInputs() {
         //inputs[i].addEventListener("change", protectEmailInput);
         break;
       case "password":
+        if(inputs[i].name == "current_password") break; // Don't check their current password on password change.
         inputs[i].addEventListener("change", protectPasswordInput);
         break;
     }
@@ -204,7 +205,9 @@ function getPasswordHash(password) {
  * @param {object} evt - The DOM event object.
  */
 function protectPasswordInput(evt) {
-  var inputValue = evt.currentTarget.value;
+  var inputElement = evt.currentTarget;
+  var form = inputElement.form;
+  var inputValue = inputElement.value;
   var hash = sha1(inputValue).toUpperCase();
   var hashPrefix = hash.slice(0, 5);
   var shortHash = hash.slice(5);
@@ -218,43 +221,33 @@ function protectPasswordInput(evt) {
         var data = resp[i].split(":");
 
         if (data[0].indexOf(shortHash) === 0) {
-          var message = [
-            '<p>The password you just entered has been found in <b>' + numberFormatter(parseInt(data[1])) + '</b> data breaches. <b>This password is not safe to use</b>.</p>',
-            '<p>This means attackers can easily find this password online and will often try to access accounts with it.</p>',
-            '<p>If you are currently using this password, please change it immediately to protect yourself. For more information, visit <a href="https://haveibeenpwned.com/" title="haveibeenpwned">Have I Been Pwned?</a>',
-            '<p>This notice will not show again for the duration of this session to give you time to update this password.</p>'
-          ].join('');
+          // Hit on password - this password has at least 1 hit in the responses
 
-          vex.dialog.alert({
-            message: "Unsafe password detected!",
-            input: message,
-            callback: function() {
-              // Cache this password once the user clicks the "I Understand" button
-              // so we don't continuously annoy the user with the same warnings.
-              //
-              // NOTE: We're using sessionStorage here (not localStorage) as we
-              // only want to not annoy the user for the duration of this
-              // session. Once they've come back to the site at a later time, we
-              // should bug them if they try to use the same password >:D
-              sessionStorage.setItem(getPasswordHash(inputValue), "true");
-            }
-          });
+          var existingHitsInput = form.getElementsByTagName("compromised_hits");
+          if(existingHitsInput.length > 0) {
+            form.removeChild(existingHitsInput[0].parentNode)
+          }
+
+          var container = document.createElement("div");
+          container.style = "display: none";
+
+          var hitsInput = document.createElement("input");
+          hitsInput.type = "hidden";
+          hitsInput.name = "compromised_hits";
+          hitsInput.value = data[1];
+
+          container.appendChild(hitsInput);
+          form.insertBefore(container, form.firstElementChild.nextSibling);
         }
       }
     }
   };
-
-  // If this hash is cached, we shouldn't do anything.
-  if (isIgnored(getPasswordHash(inputValue))) {
-    return;
-  }
 
   // We're using the API with k-Anonymity searches to protect privacy.
   // You can read more about this here: https://haveibeenpwned.com/API/v2#SearchingPwnedPasswordsByRange
   xmlHttp.open("GET", PASS_PROTECT_PASSWORD_CHECK_URI + hashPrefix, true);
   xmlHttp.send(null);
 }
-
 
 // Bootstrap our passProtect functionality after the page has fully loaded.
 if (window.attachEvent) {
